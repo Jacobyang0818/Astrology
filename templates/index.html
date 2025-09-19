@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>星盤計算</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <!-- AstroChart CDN -->
+  <script src="https://unpkg.com/@astrodraw/astrochart"></script>
+</head>
+<body>
+  <header><h1>黃老師-星盤占星/四大元素分析</h1></header>
+
+  <section id="form">
+    <label>西元　年 <select id="year"></select></label>
+    <label>月 <select id="month"></select></label>
+    <label>日 <select id="day"></select></label>
+    <label>時 <select id="hour"></select></label>
+    <label>分 <select id="minute"></select></label>
+    <label>宮位制度
+      <select id="house_system">
+        {% for name in house_systems %}
+          <option value="{{ name }}" {{ 'selected' if name == '整宮制' else '' }}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>出生地
+      <input id="location" type="text" value="台南市安南區" placeholder="請輸入地名或地址">
+    </label>
+    <button id="calc">計算</button>
+    <span id="status"></span>
+  </section>
+
+  <section id="meta">
+    <div><b>座標/時區：</b><span id="geo"></span></div>
+    <div><b>制度：</b><span id="hsys"></span></div>
+  </section>
+
+  <!-- AstroChart -->
+  <section id="chart">
+    <div id="paper"></div>
+  </section>
+
+  <section class="grid">
+    <div>
+      <h2>四大天王表</h2>
+      <table id="four_kings" class="tbl"></table>
+    </div>
+    <div>
+      <h2>元素總表</h2>
+      <table id="summary_rows" class="tbl"></table>
+    </div>
+  </section>
+
+  <section>
+    <h2>元素明細</h2>
+    <table id="detail_rows" class="tbl"></table>
+  </section>
+
+  <section>
+    <h2>宮位狀態</h2>
+    <table id="houses_rows" class="tbl"></table>
+  </section>
+
+  <section>
+    <h2>行星位置</h2>
+    <table id="positions_rows" class="tbl"></table>
+  </section>
+
+  <section>
+    <h2>相位表</h2>
+    <table id="aspects_rows" class="tbl"></table>
+  </section>
+
+  <section>
+  <h2>AI命盤分析建議</h2>
+  <div id="ai_advice" class="md"></div>
+  </section>
+
+  <section>
+    <h2>引用/致謝</h2>
+    <div id="credits" class="md small"></div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
