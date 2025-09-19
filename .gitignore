@@ -13,3 +13,8 @@ __pycache__/
 
 # Others
 *.log
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
