@@ -32,6 +32,33 @@ async function fetchChart(){
   renderAll(data);
 }
 
+async function fetchChartAI(){
+  try{
+    const y=$("#year").value,m=$("#month").value,d=$("#day").value,h=$("#hour").value,mi=$("#minute").value;
+    const loc=$("#location").value, hsys=$("#house_system").value;
+    $("#status").textContent="AI 生成中…";
+    const url=`/api/chart?year=${y}&month=${m}&day=${d}&hour=${h}&minute=${mi}&location=${q(loc)}&house_system=${q(hsys)}&ai=1`;
+    const r=await fetch(url,{headers:{'Accept':'application/json'}});
+    if(!r.ok){
+      const t=await r.text().catch(()=> "");
+      $("#status").textContent=`錯誤 ${r.status}`;
+      console.error("AI fetch failed", r.status, t);
+      return;
+    }
+    const data=await r.json();
+    $("#status").textContent="完成（含 AI）";
+    renderAll(data);
+  }catch(err){
+    $("#status").textContent="發生例外";
+    console.error(err);
+  }
+}
+
+document.getElementById("gen_ai").addEventListener("click", (e)=>{
+  e.preventDefault();
+  fetchChartAI();
+});
+
 // —— AstroChart 資料整形 —— //
 function toAstroChartData(api){
   const map = {

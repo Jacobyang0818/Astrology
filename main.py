@@ -643,6 +643,7 @@ def api_chart(
     minute: int,
     location: str,
     house_system: str = Query("整宮制", description="中文名稱或代碼，例如：整宮制 / W"),
+    ai: int = Query(0, ge=0, le=1, dscription="是否產生AI解說內容 : 1=是, 0=否")
 ):
     geo = geocode_location(location)
     jd_ut = to_julday_utc(
@@ -652,13 +653,13 @@ def api_chart(
     HSYS = resolve_hsys(house_system)
     data = calc_chart(jd_ut, geo.lat, geo.lon, HSYS)
 
-    interp = gemini_interpretations(data)
+    interp = gemini_interpretations(data) if (GEMINI_ENABLED and ai == 1) else {}
     four_rows, chart_ruler = build_four_kings(data, interpretations=interp)
     detail_rows, summary_rows = build_element_tables(data, chart_ruler)
     houses_rows = build_houses_table(data)
     positions_rows = build_positions_table(data)  # <— 新增
     aspects_rows = build_aspects_table(data)  # <— 新增
-    ai_advice_md = build_ai_advice_md(data)  # 可能為空字串
+    ai_advice_md = build_ai_advice_md(data) if (GEMINI_ENABLED and ai == 1) else "" # 可能為空字串
 
     payload = {
         "geo": geo.dict(),
@@ -684,4 +685,5 @@ def api_chart(
         "ai_advice_md": ai_advice_md,               # <— 新增
     }
     payload["credits_md"] = build_credits_md(payload)
+    payload["ai_generated"] = bool(ai)  # ← 可供前端判斷
     return payload
