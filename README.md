@@ -20,13 +20,28 @@ Unlike standard AI chatbots, this system uses **Retrieval-Augmented Generation (
 - **Knowledge Base**: Uses a local **Qdrant** vector database to store and retrieve chunks from professional astrology guides.
 - **Precision**: By retrieving context-specific knowledge, the AI (Gemini 2.5 Flash) provides advice that is far more accurate and professional than generic LLM responses.
 
+#### 🧠 How the RAG Works
+The RAG system follows a classic **Ingest -> Retrieve -> Augment** pipeline:
+1.  **Data Ingestion (`build_rag.py`)**:
+    *   **Loading**: Astrology PDFs and text guides are loaded from the `docs/` directory.
+    *   **Splitting**: Content is split into smaller chunks (approx. 700 characters) with overlap to preserve context using `RecursiveCharacterTextSplitter`.
+    *   **Embedding**: Each chunk is transformed into a high-dimensional vector (3072 dimensions) using `models/gemini-embedding-001`.
+    *   **Storage**: These vectors are stored in a local **Qdrant** collection named `astrology_knowledge`.
+2.  **Retrieval & Generation (`main.py`)**:
+    *   **Search**: When a user requests an AI analysis, the system embeds the birth chart data (e.g., "Sun in Capricorn") and performs a similarity search against the Qdrant database.
+    *   **Context Injection**: The most relevant excerpts from professional astrology books are retrieved.
+    *   **Augmentation**: These excerpts are injected into the LLM prompt as "Reference Context".
+    *   **Final Output**: Gemini 2.5 Flash synthesizes the birth chart data and the professional context to generate a deeply personalized and academically accurate analysis.
+
 ---
 
 ## 🚀 Features
-- **Precise Calculation**: High-precision planetary and house data using `pyswisseph`.
-- **Automatic Geocoding**: Resolve birthplace to latitude, longitude, and timezone automatically.
-- **RAG Architecture**: Integration of LangChain, Qdrant, and Google Gemini for expert-level advice.
-- **Modern UI**: A responsive React-based frontend for a seamless user experience.
+- **Natal Chart Visualization**: High-precision rendering of planetary positions and aspects.
+  ![Natal Chart](./screenshots/natal_chart.png)
+- **RAG-Enhanced AI Advice**: Expert-level analysis grounded in professional literature.
+  ![AI Advice](./screenshots/ai_advice.png)
+- **Comprehensive Data Tables**: Detailed breakdown of elements, houses, and planetary states.
+  ![Data Tables](./screenshots/data_tables.png)
 
 ---
 
@@ -53,6 +68,10 @@ uv sync
 cd frontend
 npm install
 ```
+
+1. On the homepage, enter **birth date/time and birthplace**.
+   ![Input Form](./screenshots/input_form.png)
+2. Click “Calculate” to display:
 
 ### 3. Knowledge Base Setup (Mandatory for RAG)
 You must download the astrology knowledge base files and place them in the `docs/` folder:
