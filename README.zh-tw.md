@@ -70,14 +70,18 @@ npm install
 ```
 
 ### 3. 建立知識庫 (RAG 核心步驟)
-您需要下載以下占星指南檔案並放置於 `docs/` 資料夾中：
-- [占星指南 第一部分](https://drive.google.com/file/d/151KLdRjCkaCwW4eTppCitg8vcQFU_vfd/view?usp=drive_link)
-- [占星指南 第二部分](https://drive.google.com/file/d/1nSwX_pPxoOLFOeVsR_Q8XFU_vfd/view?usp=drive_link)
+本系統現在已將占星知識庫的下載、文字提取（OCR）與索引（Indexing）完全自動化。
 
-下載完成後，執行索引腳本：
+只需執行以下指令：
 ```bash
-uv run build_rag.py
+uv run setup_rag.py
 ```
+該腳本會：
+- 從 Google Drive 自動下載專業占星指南 PDF。
+- 使用 RapidOCR 進行高精度的文字提取。
+- 將知識片段索引至本地 **Qdrant** 向量資料庫中。
+
+---
 
 ### 4. 環境變數設定
 在專案根目錄建立 `.env` 檔案：

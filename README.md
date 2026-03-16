@@ -74,14 +74,18 @@ npm install
 2. Click “Calculate” to display:
 
 ### 3. Knowledge Base Setup (Mandatory for RAG)
-You must download the astrology knowledge base files and place them in the `docs/` folder:
-- [Astrology Guide Part 1](https://drive.google.com/file/d/151KLdRjCkaCwW4eTppCitg8vcQFU_vfd/view?usp=drive_link)
-- [Astrology Guide Part 2](https://drive.google.com/file/d/1nSwX_pPxoOLFOeVsR_Q8XFUyBn0tpuQF/view?usp=drive_link)
+The system now automates the downloading and processing (OCR & Indexing) of the astrology knowledge base.
 
-After downloading, run the indexing script:
+Simply run:
 ```bash
-uv run build_rag.py
+uv run setup_rag.py
 ```
+This will:
+- Download necessary professional astrology PDFs from Google Drive.
+- Perform OCR extraction using RapidOCR (for the primary guide).
+- Build the Qdrant vector database in `qdrant_db/`.
+
+---
 
 ### 4. Environment Configuration
 Create a `.env` file in the root:
