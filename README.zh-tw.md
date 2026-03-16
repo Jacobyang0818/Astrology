@@ -2,98 +2,107 @@
   <img src="./logo.png" alt="Astrology Gemini Compass" width="500">
 </p>
 
+# Astrology Gemini Compass (占星雙子羅盤)
+
 [English](./README.md) | [中文](./README.zh-tw.md)
 
-這是一個以 **FastAPI** + **Swiss Ephemeris (pyswisseph)** 開發的星盤計算與展示服務。  
-前端採用 **AstroChart.js** 繪製星盤，並呈現行星位置、宮位狀態、相位表等資訊。  
-若有提供 Gemini API 金鑰，還能生成繁體中文的**AI 命盤分析建議**。
-
+Astrology Gemini Compass 是一個專業級的星盤計算與 RAG 增強型 AI 分析平台。它結合了高精度的天文計算與先進的檢索增強生成（RAG）系統，提供具有學理依據的專業占星指引。
 
 ---
 
-## 🧭 研發背景
-在資訊快速更迭的時代，人們常常容易迷失方向。  
-本專案希望透過歷史悠久的西洋占星術，為尋找方向的人們提供一盞明燈， 
-結合現代技術與古老智慧，讓使用者能在浩瀚資訊中找到屬於自己的指引。
+## ✨ 核心貢獻
+
+### 1. 高精度星盤視覺化
+本專案實現了高度客製化的**星盤渲染功能**，能夠精確呈現行星位置、宮位邊界及相位表。我們將 **Swiss Ephemeris** 的原始數據轉化為直觀的 SVG 視覺體驗，讓占星師與愛好者一目了然。
+
+### 2. RAG 增強型 AI 分析 (核心創新)
+不同於一般的 AI 聊天機器人，本系統採用 **RAG (Retrieval-Augmented Generation)** 技術，讓 AI 在回答前先「翻閱」專業占星文獻。
+- **本地知識庫**：使用 **Qdrant** 向量資料庫儲存專業占星指南的知識碎片。
+- **專業度提升**：透過檢索特定情境的占星學理，AI (Gemini 2.5 Flash) 提供的建議比通用型 LLM 更精確、完整且具學術深度。
 
 ---
 
-## ✨功能簡介
-- 輸入出生年月日時分與地點，自動透過 Nominatim 解析經緯度與時區。
-- 使用 Swiss Ephemeris 計算行星、宮位、上升、天頂等關鍵點。
-- 前端星盤繪製（含相位、行星度數、宮位）。
-- 表格輸出：四大天王表、元素總表、宮位狀態、行星位置、相位表。
-- （可選）Google Gemini AI：提供 400–600 字性格與建議分析，並輸出 Markdown。
+## 🚀 功能簡介
+- **精確的天象計算**：使用 `pyswisseph` 獲取高精度的行星與宮位數據。
+- **自動地理編碼**：自動將出生地解析為經緯度與對應時區（自動處理日光節約時間）。
+- **RAG 架構**：整合 LangChain、Qdrant 與 Gemini，實現「有憑有據」的命盤解析。
+- **現代化介面**：基於 React 的響應式前端，提供流暢的操作體驗。
 
 ---
 
-## ⚙️使用方式
+## 🛠️ 技術棧
+- **後端**: FastAPI (Python 3.12, 使用 UV 管理環境)
+- **前端**: React (Vite)
+- **向量資料庫**: Qdrant (Local Mode)
+- **AI 模型**: Google Gemini 2.5 Flash + Gemini Embedding 001
+- **開發框架**: LangChain + Langchain-Qdrant
 
-### 1. 安裝需求
+---
+
+## ⚙️ 本地開發環境設置
+
+### 1. 前置需求
+請確保您的系統已安裝 `uv` (Python 管理工具) 與 `npm` (Node.js)。
+
+### 2. 安裝與依賴設定
 ```bash
+# 安裝後端依賴
 uv sync
+
+# 安裝前端依賴
+cd frontend
+npm install
 ```
 
-（會根據 `pyproject.toml` 自動安裝所需套件。）
+### 3. 建立知識庫 (RAG 核心步驟)
+您需要下載以下占星指南檔案並放置於 `docs/` 資料夾中：
+- [占星指南 第一部分](https://drive.google.com/file/d/151KLdRjCkaCwW4eTppCitg8vcQFU_vfd/view?usp=drive_link)
+- [占星指南 第二部分](https://drive.google.com/file/d/1nSwX_pPxoOLFOeVsR_Q8XFU_vfd/view?usp=drive_link)
 
-### 2. 啟動伺服器
+下載完成後，執行索引腳本：
+```bash
+uv run build_rag.py
+```
+
+### 4. 環境變數設定
+在專案根目錄建立 `.env` 檔案：
+```env
+GEMINI_API_KEY=您的_API_金鑰
+```
+
+### 5. 啟動程式
+**啟動後端:**
 ```bash
 uv run uvicorn main:app --reload
 ```
-
-預設會在 <http://127.0.0.1:8000> 提供前端介面。
-
-### 3. 操作步驟
-1. 在首頁表單輸入 **年/月/日/時/分** 與 **出生地**。  
-2. 點擊「計算」後，頁面會顯示：
-   - 星盤圖（含相位）
-   - 四大天王表
-   - 元素總表與明細
-   - 宮位狀態
-   - 行星位置
-   - 相位表
-   - （若啟用 AI）AI 命盤分析建議  
-3. 表格內容可直接閱讀，AI 分析與致謝則以 Markdown 呈現。
-
----
-
-## 🤖啟用 Gemini AI
-1. 在專案根目錄建立 `.env` 檔案。  
-2. 加入以下內容（請替換成你自己的 API Key）：  
-   ```env
-   GEMINI_API_KEY=your_api_key_here
-   ```
-3. 重新啟動伺服器。  
-4. 此時 `/api/chart` 的回傳資料會多出 `ai_advice_md` 欄位，前端會顯示「AI命盤分析建議」。
-
----
-
-## 🚀 使用 Docker
-
-本專案已發佈至 [Docker Hub](https://hub.docker.com/r/jacob860818/astrology-gemini-compass)，可直接下載映像並執行。
-
-### 下載映像
+**啟動前端:**
 ```bash
-docker pull jacob860818/astrology-gemini-compass:v1.0.0
+cd frontend
+npm run dev
+```
 
+---
+
+## 🚀 Docker 部署
+
+### 建立映像 (Image)
+```bash
+docker build -t astrology-gemini-compass:latest .
+```
+
+### 執行容器
+```bash
 docker run -d \
-  -e GEMINIAPIKEY=你的API金鑰 \
-  -p 8080:8080 \
-  jacob860818/astrology-gemini-compass:v1.0.0
+  -p 8000:8000 \
+  -e GEMINI_API_KEY=您的API金鑰 \
+  astrology-gemini-compass:latest
 ```
-啟動後，開啟瀏覽器訪問：
-```bash
-http://localhost:8080
-```
+
 ---
 
-
-## 🙏引用與致謝
-- 星體計算：Swiss Ephemeris（`pyswisseph`）
-- 地理座標：OpenStreetMap / Nominatim
-- 時區查詢：`timezonefinder` → IANA 時區
-- 時間換算：`pytz`（本地時間 → UTC → 儒略日）
-- 星盤繪圖：`@astrodraw/astrochart`（SVG 呈現）
-- AI 模型：Google Gemini 1.5 Flash（僅在提供 API 金鑰時啟用，輸出 Markdown 格式）
-- 參考專案：[AllanYiin's Project](https://github.com/AllanYiin/VibeChallenge49/tree/master)
-- 領域知識來源：占星之門、黃銘老師占星資料
+## 🙏 引用與致謝
+- **天體計算**: Swiss Ephemeris (`pyswisseph`)
+- **地理編碼**: OpenStreetMap / Nominatim
+- **RAG 知識來源**: 專業占星文獻（黃銘老師占星資料、占星之門）
+- **星盤繪製**: `@astrodraw/astrochart`
+- **啟發來源**: 專業西洋占星學理與計算模式。

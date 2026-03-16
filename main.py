@@ -1,16 +1,16 @@
-# main.py
-# Requirements (pip): fastapi uvicorn swisseph geopy timezonefinder pytz google-generativeai python-dotenv
-# Run: uvicorn main:app --reload
-
 import os
 import math
+import logging
 from typing import Dict, List, Optional
 from datetime import datetime
+
+# 配置日誌
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import swisseph as swe
@@ -18,18 +18,65 @@ from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
 import pytz
 
+# RAG related imports
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_qdrant import QdrantVectorStore
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_classic.chains import create_retrieval_chain
+from langchain_core.prompts import ChatPromptTemplate
+from qdrant_client import QdrantClient
+
 # -------------------- 可選：Gemini LLM --------------------
 GEMINI_ENABLED = False
 try:
     import google.generativeai as genai
+    import os
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv() # Load .env for both Gemini API key and Qdrant path
     if os.getenv("GEMINI_API_KEY"):
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
         GEMINI_ENABLED = True
-except Exception:
+except ImportError:
     GEMINI_ENABLED = False
+
+# --- Global RAG Retriever ---
+_qdrant_vector_store = None
+
+def get_retriever():
+    global _qdrant_vector_store
+    if _qdrant_vector_store is not None:
+        return _qdrant_vector_store
+
+    db_path = "./qdrant_db"
+    if not os.path.exists(db_path):
+        logger.info(f"Qdrant DB path not found: {db_path}. RAG will be skipped.")
+        return None
+
+    if not GEMINI_ENABLED:
+        logger.info("Gemini API key not configured. RAG will be skipped.")
+        return None
+
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+        client = QdrantClient(path=db_path)
+        # Check if collection exists
+        collections = client.get_collections().collections
+        if "astrology_knowledge" not in [c.name for c in collections]:
+            logger.warning(f"Qdrant collection 'astrology_knowledge' not found. RAG will be skipped.")
+            return None
+
+        _qdrant_vector_store = QdrantVectorStore(
+            client=client,
+            collection_name="astrology_knowledge",
+            embedding=embeddings
+        )
+        logger.info("Qdrant RAG retriever initialized successfully.")
+        return _qdrant_vector_store
+    except Exception as e:
+        logger.error(f"RAG Initialization failed: {e}", exc_info=True)
+        return None
 
 # 可選：Swiss Ephemeris 路徑（若有本地 ephe 檔）
 if os.getenv("SWEPH_PATH"):
@@ -44,8 +91,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Mount frontend build directory
+# Note: In production, frontend/dist should contain the built React app
+try:
+    if os.path.exists("frontend/dist"):
+        app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+except Exception as e:
+    logger.warning(f"Could not mount frontend/dist: {e}")
 
 # -------------------- 常數 --------------------
 ZODIAC_CN = [
@@ -399,7 +452,7 @@ def build_houses_table(data: dict):
 def gemini_interpretations(data: dict) -> Dict[str, str]:
     if not GEMINI_ENABLED:
         return {}
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     # 動態計算命主星與其掌管宮位
     asc_sign = data["asc_sign"]
     chart_ruler = RULER_OF_SIGN[asc_sign]                   # 例：牡羊→火星
@@ -465,6 +518,8 @@ def build_positions_table(data: dict):
         ("天王星", planet_lons["天王星"], planet_signs["天王星"], planet_houses["天王星"], []),
         ("海王星", planet_lons["海王星"], planet_signs["海王星"], planet_houses["海王星"], []),
         ("冥王星", planet_lons["冥王星"], planet_signs["冥王星"], planet_houses["冥王星"], []),
+        ("北交點", data["north_node"], data["planet_signs"]["北交點"], data["planet_houses"]["北交點"], []),
+        ("南交點", data["south_node"], data["planet_signs"]["南交點"], data["planet_houses"]["南交點"], []),
         ("天頂", mc_deg, mc_sign, planet_houses["天頂"], []),
     ]
 
@@ -546,39 +601,60 @@ def build_ai_advice_md(data: dict) -> str:
     major_aspects = _summarize_major_aspects(data)
 
     prompt = f"""
-            你是一位專業占星解讀者。請用繁體中文，根據以下出生星盤重點，撰寫約 400–600 字的務實分析（避免宿命論）：
-            - 太陽：{sun}
-            - 月亮：{moon}
-            - 上升：{asc}
-            - 落宮重點：{house_focus}
-            - 主要相位：{major_aspects}
+你是一位專業占星解讀者。請根據以下出生星盤重點，撰寫約 400–600 字的務實分析（避免宿命論）：
+- 太陽：{sun}
+- 月亮：{moon}
+- 上升：{asc}
+- 落宮重點：{house_focus}
+- 主要相位：{major_aspects}
 
-            接著說明「行星落入各宮」對生活領域可能帶來的影響（請以條列方式簡述 4–7 點，對應上文的落宮）。
-            最後給出具體可行的建議 3–5 條，聚焦學習、工作、人際與情緒管理。
-            請使用 Markdown 呈現，包含小標題與條列清單。
-            """.strip()
+接著說明「行星落入各宮」對生活領域可能帶來的影響（請以條列方式簡述 4–7 點，對應上文的落宮）。
+最後給出具體可行的建議 3–5 條，聚焦學習、工作、人際與情緒管理。
+請使用 Markdown 呈現，包含小標題與條列清單。
+""".strip()
 
+    import traceback
     system_msg = "你是精通西洋占星的中文助理，提供務實且尊重自由意志的解讀。務必使用繁體中文。"
-    try:
-        # 優先採用 messages（有 system + user）
-        msgs = [
-            {"role": "system", "parts": [system_msg]},
-            {"role": "user",   "parts": [prompt]},
-        ]
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        r = model.generate_content(msgs)
-        return (r.text or "").strip()
-    except Exception:
-        # 相容路徑：用 system_instruction + 單一 prompt
+    
+    # 嘗試使用 RAG
+    vector_store = get_retriever()
+    if vector_store:
+        print("RAG Vector Store found. Attempting augmented generation...")
         try:
-            model = genai.GenerativeModel(
-                "gemini-1.5-flash",
-                system_instruction=system_msg
+            # 1. 相似度檢索
+            docs = vector_store.similarity_search(prompt, k=8)
+            context_text = "\n\n".join([doc.page_content for doc in docs])
+            
+            # 2. 構建增強後的提示詞，強制使用 Gemini 2.5 Flash
+            model_name = "gemini-2.5-flash"
+            llm = genai.GenerativeModel(
+                model_name,
+                system_instruction=system_msg + f"\n\n請根據以下提供的占星學知識庫內容輔助分析：\n\n{context_text}"
             )
-            r = model.generate_content(prompt)
+            
+            print(f"Invoking {model_name} with RAG context...")
+            r = llm.generate_content(prompt)
+            print("RAG generation successful.")
             return (r.text or "").strip()
-        except Exception:
-            return ""
+        except Exception as e:
+            print(f"RAG Generation failed, falling back to basic Gemini: {e}")
+            traceback.print_exc()
+    else:
+        print("RAG Retriever not available (skipped or failed to init).")
+
+    # Fallback: 無 RAG，直接呼叫原始 Gemini SDK
+    try:
+        print("Falling back to basic Gemini SDK...")
+        model = genai.GenerativeModel(
+            "gemini-2.5-flash",
+            system_instruction=system_msg
+        )
+        r = model.generate_content(prompt)
+        return (r.text or "").strip()
+    except Exception as e:
+        print(f"Gemini API Error (fallback): {e}")
+        traceback.print_exc()
+        return ""
 
 def build_credits_md(payload: dict) -> str:
     tz = payload["geo"]["tz"]
@@ -590,8 +666,7 @@ def build_credits_md(payload: dict) -> str:
 - 時區查詢：`timezonefinder` → IANA 時區（目前：`{tz}`）
 - 時間換算：`pytz`（本地時 → UTC → 儒略日）
 - 星盤繪圖：`@astrodraw/astrochart` 以 SVG 呈現星盤
-- AI 模型：Google Gemini 1.5 Flash（僅在提供 API 金鑰時啟用），輸出為 Markdown
-- 參考專案：[Vibe Coding](https://github.com/AllanYiin/VibeChallenge49/tree/master)
+- AI 模型：Google Gemini 2.5 Flash（僅在提供 API 金鑰時啟用），輸出為 Markdown
 - 領域知識來源：占星之門、黃銘老師占星資料
 """.strip()
 
@@ -622,13 +697,9 @@ def essential_dignity(planet: str, sign: str) -> str:
         return "落陷"
     return "一般"
 # -------------------- API --------------------
-@app.get("/")
-def index(request: Request):
-    # 傳入可選的宮位制度（中文）
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "house_systems": list(HOUSE_SYSTEMS_CN2CODE.keys())},
-    )
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.get("/api/geocode", response_model=GeoOut)
 def api_geocode(location: str = Query(..., description="地名或地址")):
@@ -683,6 +754,7 @@ def api_chart(
         "symbols": SYMBOL,
         "house_system_cn": HOUSE_SYSTEMS_CODE2CN.get(HSYS, "整宮制"),
         "ai_advice_md": ai_advice_md,               # <— 新增
+        "rag_active": _qdrant_vector_store is not None, # <— 新增 RAG 狀態
     }
     payload["credits_md"] = build_credits_md(payload)
     payload["ai_generated"] = bool(ai)  # ← 可供前端判斷

@@ -2,96 +2,107 @@
   <img src="./logo.png" alt="Astrology Gemini Compass" width="500">
 </p>
 
+# Astrology Gemini Compass
+
 [English](./README.md) | [中文](./README.zh-tw.md)
 
-This project is a **natal chart calculation and visualization service** built with **FastAPI** + **Swiss Ephemeris (pyswisseph)**.  
-The frontend uses **AstroChart.js** to render the chart, displaying planetary positions, house cusps, and aspect tables.  
-If a Gemini API key is provided, the system can also generate **AI-powered astrological analysis in Traditional Chinese**.
+Astrology Gemini Compass is a professional natal chart calculation and RAG-enhanced AI analysis platform. It combines high-precision astronomical calculations with an advanced Retrieval-Augmented Generation (RAG) system to provide insightful, academically-grounded astrological guidance.
 
 ---
 
-## 🧭 Background
-In an era of rapidly changing information, people often feel lost.  
-This project seeks to bring the ancient wisdom of Western astrology into the modern age,  
-helping people find their own guidance by combining timeless tradition with new technology.
+## ✨ Key Contributions
+
+### 1. Advanced Natal Chart Visualization
+This project features a customized implementation of **natal chart rendering**, displaying planet positions, house cusps, and aspect tables with high precision. It transforms raw astronomical data from **Swiss Ephemeris** into an intuitive, SVG-based visual experience.
+
+### 2. RAG-Enhanced AI Analysis (The Core Innovation)
+Unlike standard AI chatbots, this system uses **Retrieval-Augmented Generation (RAG)** to "ground" its analysis in professional astrology literature.
+- **Knowledge Base**: Uses a local **Qdrant** vector database to store and retrieve chunks from professional astrology guides.
+- **Precision**: By retrieving context-specific knowledge, the AI (Gemini 2.5 Flash) provides advice that is far more accurate and professional than generic LLM responses.
 
 ---
 
-## ✨ Features
-- Input birth date, time, and place, with automatic latitude/longitude and timezone resolution using Nominatim.  
-- Calculate planets, houses, Ascendant, and Midheaven using Swiss Ephemeris.  
-- Render natal chart with aspects, planetary degrees, and houses.  
-- Tabular outputs: Big 4 planets, element distribution, house emphasis, planetary positions, and aspect table.  
-- (Optional) Google Gemini AI: Generates a 400–600 word personality and guidance analysis in Markdown.
+## 🚀 Features
+- **Precise Calculation**: High-precision planetary and house data using `pyswisseph`.
+- **Automatic Geocoding**: Resolve birthplace to latitude, longitude, and timezone automatically.
+- **RAG Architecture**: Integration of LangChain, Qdrant, and Google Gemini for expert-level advice.
+- **Modern UI**: A responsive React-based frontend for a seamless user experience.
 
 ---
 
-## ⚙️ Usage
+## 🛠️ Technical Stack
+- **Backend**: FastAPI (Python 3.12, UV for package management)
+- **Frontend**: React (Vite)
+- **Database**: Qdrant (Local vector store)
+- **AI/LLM**: Google Gemini 2.5 Flash + Gemini Embedding 001
+- **RAG Framework**: LangChain + Langchain-Qdrant
 
-### 1. Install dependencies
+---
+
+## ⚙️ Local Setup
+
+### 1. Prerequisites
+Ensure you have `uv` (Python) and `npm` (Node.js) installed.
+
+### 2. Clone and Install
 ```bash
+# Install backend dependencies
 uv sync
-```
-(This installs all required packages based on `pyproject.toml`.)
 
-### 2. Start the server
+# Install frontend dependencies
+cd frontend
+npm install
+```
+
+### 3. Knowledge Base Setup (Mandatory for RAG)
+You must download the astrology knowledge base files and place them in the `docs/` folder:
+- [Astrology Guide Part 1](https://drive.google.com/file/d/151KLdRjCkaCwW4eTppCitg8vcQFU_vfd/view?usp=drive_link)
+- [Astrology Guide Part 2](https://drive.google.com/file/d/1nSwX_pPxoOLFOeVsR_Q8XFUyBn0tpuQF/view?usp=drive_link)
+
+After downloading, run the indexing script:
+```bash
+uv run build_rag.py
+```
+
+### 4. Environment Configuration
+Create a `.env` file in the root:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+### 5. Running
+**Backend:**
 ```bash
 uv run uvicorn main:app --reload
 ```
-By default, the frontend will be available at <http://127.0.0.1:8000>.
-
-### 3. Steps
-1. On the homepage, enter **birth date/time and birthplace**.  
-2. Click “Calculate” to display:
-   - Natal chart (with aspects)  
-   - Big 4 planets summary  
-   - Element balance and details  
-   - House emphasis  
-   - Planetary positions  
-   - Aspect table  
-   - (If enabled) AI-generated astrological advice  
-3. Tables are displayed directly; AI analysis and credits are rendered in Markdown.
-
----
-
-## 🤖 Enable Gemini AI
-1. Create a `.env` file in the project root.  
-2. Add your API key (replace with your own):  
-   ```env
-   GEMINI_API_KEY=your_api_key_here
-   ```
-3. Restart the server.  
-4. The `/api/chart` response will include the `ai_advice_md` field, and the frontend will display “AI Chart Analysis”.
-
----
-
-## 🚀 Run with Docker
-
-This project is published on [Docker Hub](https://hub.docker.com/r/jacob860818/astrology-gemini-compass).  
-
-### Pull the image
+**Frontend:**
 ```bash
-docker pull jacob860818/astrology-gemini-compass:v1.0.0
+cd frontend
+npm run dev
+```
+
+---
+
+## 🚀 Docker Deployment
+
+### Build the image
+```bash
+docker build -t astrology-gemini-compass:latest .
 ```
 
 ### Run the container
 ```bash
-docker run -d   -e GEMINIAPIKEY=your_api_key_here   -p 8080:8080   jacob860818/astrology-gemini-compass:v1.0.0
-```
-
-After starting, open your browser at:  
-```bash
-http://localhost:8080
+docker run -d \
+  -p 8000:8000 \
+  -e GEMINI_API_KEY=your_api_key_here \
+  astrology-gemini-compass:latest
 ```
 
 ---
 
 ## 🙏 Credits
-- Planetary calculations: Swiss Ephemeris (`pyswisseph`)  
-- Geocoding: OpenStreetMap / Nominatim  
-- Timezone lookup: `timezonefinder` → IANA  
-- Time conversion: `pytz` (local → UTC → Julian Day)  
-- Chart rendering: `@astrodraw/astrochart` (SVG-based)  
-- AI model: Google Gemini 1.5 Flash (enabled only with API key, Markdown output)  
-- Reference project: [AllanYiin's Project](https://github.com/AllanYiin/VibeChallenge49/tree/master)  
-- Domain knowledge sources: Astrology Door, Prof. Huang Ming’s astrology resources  
+- **Planetary Calculations**: Swiss Ephemeris (`pyswisseph`)
+- **Geocoding**: OpenStreetMap / Nominatim
+- **RAG Knowledge Sources**: Professional Astrology resources (Prof. Huang Ming)
+- **Chart Rendering**: `@astrodraw/astrochart`
+- **Inspiration**: Specialized Western Astrology calculation patterns.

@@ -1,5 +1,7 @@
 # Python
 __pycache__/
+docs/
+qdrant_db/
 *.pyc
 *.pyo
 *.pyd
