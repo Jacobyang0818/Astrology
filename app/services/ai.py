@@ -62,10 +62,10 @@ def build_ai_advice_md(data: dict, gemini_enabled: bool, house_summary: str, asp
 
     system_msg = "你是精通西洋占星的中文助理，提供務實且尊重自由意志的解讀。務必使用繁體中文。"
     
-    vector_store = get_retriever(gemini_enabled)
-    if vector_store:
+    retriever = get_retriever(gemini_enabled)
+    if retriever:
         try:
-            docs = vector_store.similarity_search(prompt, k=8)
+            docs = retriever.invoke(prompt)
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
             model_name = "gemini-2.5-flash"
