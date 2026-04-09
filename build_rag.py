@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -6,7 +7,6 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-import time
 
 load_dotenv()
 if "GEMINI_API_KEY" not in os.environ:
@@ -15,11 +15,17 @@ if "GEMINI_API_KEY" not in os.environ:
 
 os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
-def build_vector_db():
-    print("Loading documents...")
+# ─── 讀取 RAG 模式設定 ────────────────────────────────────────────────────────
+RAG_MODE = os.getenv("RAG_MODE", "simple").strip().lower()
+if RAG_MODE not in ("simple", "parent"):
+    print(f"Warning: Unknown RAG_MODE='{RAG_MODE}'. Falling back to 'simple'.")
+    RAG_MODE = "simple"
+print(f">>> RAG_MODE is set to: '{RAG_MODE}'")
+
+
+def load_docs() -> list:
+    """Load source documents from docs/ directory."""
     docs = []
-    
-    # 1. Load OCR'd Text from Book 1
     file_1 = "docs/astrology_guide_1_ocr.txt"
     if os.path.exists(file_1):
         print(f"Loading {file_1}...")
@@ -27,8 +33,7 @@ def build_vector_db():
         docs.extend(loader1.load())
     else:
         print(f"Warning: {file_1} not found, skipping Book 1.")
-        
-    # 2. Load PDF from Book 2
+
     file_2 = "docs/astrology_guide_2.pdf"
     if os.path.exists(file_2):
         print(f"Loading {file_2}...")
@@ -37,54 +42,85 @@ def build_vector_db():
     else:
         print(f"Warning: {file_2} not found, skipping Book 2.")
 
-    if not docs:
-        print("No documents loaded. Exiting.")
-        return
+    return docs
 
-    print("Initializing Google Generative AI Embeddings (Stable model)...")
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-    
-    # 測試維度
+
+def init_qdrant(embeddings: GoogleGenerativeAIEmbeddings) -> QdrantVectorStore:
+    """Initialize (or reset) the Qdrant collection and return a VectorStore."""
     test_vec = embeddings.embed_query("test")
     dim = len(test_vec)
     print(f"DEBUG: Embedding dimension is {dim}")
 
-    print("Building Qdrant Vector Store locally...")
-    # Use disk-based Qdrant client
     client = QdrantClient(path="./qdrant_db")
-    
     if client.collection_exists(collection_name="astrology_knowledge"):
         print("Deleting existing collection to ensure correct dimensions...")
         client.delete_collection(collection_name="astrology_knowledge")
-        
+
     client.create_collection(
         collection_name="astrology_knowledge",
-        vectors_config=models.VectorParams(
-            size=dim,  # 使用實際測得的維度
-            distance=models.Distance.COSINE
-        )
+        vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE)
     )
-    
-    qdrant = QdrantVectorStore(
+
+    return QdrantVectorStore(
         client=client,
         collection_name="astrology_knowledge",
         embedding=embeddings
     )
 
+
+def build_simple(docs: list, qdrant: QdrantVectorStore):
+    """
+    Simple chunking mode (字數切割):
+    - 快速、API 用量低
+    - chunk_size=700, overlap=150
+    """
+    print("\n--- [simple mode] Splitting with RecursiveCharacterTextSplitter ---")
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=700,
+        chunk_overlap=150,
+        separators=["\n\n", "\n", "。", "！", "？", " ", ""]
+    )
+    splits = splitter.split_documents(docs)
+    print(f"Created {len(splits)} chunks.")
+
+    batch_size = 50
+    for i in range(0, len(splits), batch_size):
+        batch = splits[i:i + batch_size]
+        print(f"Processing batch {i+1}~{min(i+batch_size, len(splits))} / {len(splits)}...")
+        try:
+            qdrant.add_documents(batch)
+        except Exception as e:
+            if "429" in str(e):
+                print("Rate limit hit. Sleeping for 80 seconds...")
+                time.sleep(80)
+                qdrant.add_documents(batch)
+            else:
+                raise e
+
+        if i + batch_size < len(splits):
+            print("Sleeping 15s (Gemini free tier rate limit)...")
+            time.sleep(15)
+
+    print("✅ [simple] Vector database built at ./qdrant_db")
+
+
+def build_parent(docs: list, qdrant: QdrantVectorStore):
+    """
+    Parent Document Retriever mode (父子文獻):
+    - 檢索精準、AI 回答上下文豐富
+    - 需要更多 API 請求時間與本機存儲 (./docstore/parents.json)
+    """
     try:
         from langchain.retrievers import ParentDocumentRetriever
     except ImportError:
         from langchain_classic.retrievers import ParentDocumentRetriever
 
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
     from app.utils.store import PersistentInMemoryStore
 
-    # 1. 建立 DocStore (供 Parent Documents 本機儲存，直接存成 json 避免模組依賴錯誤)
-    print("Setting up DocStore for Parent Documents...")
+    print("\n--- [parent mode] Setting up ParentDocumentRetriever ---")
+    os.makedirs("./docstore", exist_ok=True)
     store = PersistentInMemoryStore("./docstore/parents.json")
-    
-    # 2. 定義切塊策略 (Splitting Strategy)
-    print("Setting up splitters...")
+
     parent_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1500,
         chunk_overlap=200,
@@ -102,34 +138,45 @@ def build_vector_db():
         child_splitter=child_splitter,
         parent_splitter=parent_splitter,
     )
-    
-    import time
-    batch_size = 2 # 縮小批次，因為每個 Parent 裡面包含了很多個 Child
-    
-    print("Adding documents to ParentDocumentRetriever (VectorDB + DocStore)...")
+
+    # batch_size=1 to avoid hitting 100 req/min free tier limit
+    batch_size = 1
     for i in range(0, len(docs), batch_size):
         batch = docs[i:i + batch_size]
-        print(f"Processing parent batch {i+1} to {min(i+batch_size, len(docs))} of {len(docs)}...")
+        print(f"Processing parent doc {i+1} / {len(docs)}...")
         try:
             retriever.add_documents(batch)
-            print(f"成功處理第 {i} 到 {i+batch_size} 份文件")
-            # 關鍵：每處理一小批就強制休息，避開每分鐘 100 次的限制
-            time.sleep(20)
+            print(f"  ✓ Done. Sleeping 30s to respect rate limit...")
+            time.sleep(30)
         except Exception as e:
             if "429" in str(e):
-                print("觸發限流，強制休息 80 秒...")
-                time.sleep(80)
-                retriever.add_documents(batch) # 重試
+                print("  Rate limit hit. Sleeping for 90 seconds...")
+                time.sleep(90)
+                retriever.add_documents(batch)
             else:
                 raise e
-            
-            
-            
-        if i + batch_size < len(docs):
-            print("Sleeping for 15 seconds to respect Gemini Free Tier API rate limits...")
-            time.sleep(15)
-    
-    print("ParentDocumentRetriever database built successfully at ./qdrant_db and ./docstore!")
+
+    print("✅ [parent] Database built at ./qdrant_db + ./docstore/parents.json")
+
+
+def build_vector_db():
+    print("Loading documents...")
+    docs = load_docs()
+    if not docs:
+        print("No documents loaded. Exiting.")
+        return
+
+    print("Initializing Gemini Embedding model...")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+
+    print("Building Qdrant Vector Store locally...")
+    qdrant = init_qdrant(embeddings)
+
+    if RAG_MODE == "parent":
+        build_parent(docs, qdrant)
+    else:
+        build_simple(docs, qdrant)
+
 
 if __name__ == "__main__":
     build_vector_db()
